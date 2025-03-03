@@ -3,9 +3,9 @@ import re
 from datetime import datetime, time, timedelta
 from typing import Callable
 
-from aiogram import BaseMiddleware, Bot, Dispatcher
+from aiogram import BaseMiddleware, Bot, Dispatcher, F
 from aiogram.filters import Command, BaseFilter
-from aiogram.types import Message, TelegramObject
+from aiogram.types import Message, TelegramObject, ContentType
 from bestconfig import Config
 from gspread import Worksheet
 
@@ -55,21 +55,26 @@ async def about_me(message: Message, user_table: Worksheet):
     result = table.iloc[user_index, column_index - 1]
 
     # Если проспал
-    if '1' in result:
+    if "1" in result:
         await message.answer(f"{message.from_user.first_name}, ты сегодня проспал 😢")
     # Если встал вовремя
-    elif '0' in result:
-        await message.answer(f"{message.from_user.first_name}, ты сегодня встал вовремя ☀️")
+    elif "0" in result:
+        await message.answer(
+            f"{message.from_user.first_name}, ты сегодня встал вовремя ☀️"
+        )
     # Если не прислал кружок
     else:
-        await message.answer(f"{message.from_user.first_name}, ты сегодня еще не присылал кружочек 👀")
+        await message.answer(
+            f"{message.from_user.first_name}, ты сегодня еще не присылал кружочек 👀"
+        )
+
 
 @dp.message(Command("help"), CHAT_FILTER)
 async def help(message: Message):
     await message.answer("Привет, я бот который записывает твои подъемы в таблицу")
 
 
-@dp.message(CHAT_FILTER)
+@dp.message(CHAT_FILTER, F.content_type == ContentType.VIDEO_NOTE)
 async def circle_heandler(message: Message, user_table: Worksheet):
     # Обрабатываем пришедший кружочек
     # Проверяем что он не выходит за рамки утра
@@ -86,8 +91,11 @@ async def circle_heandler(message: Message, user_table: Worksheet):
         == f"@{message.from_user.username.lower()}"
     ].index[0]
     user = table.loc[user_index].to_dict()
-    # Если пользователя нет в таблице, ничего не делаем
+    # Если пользователя нет в таблице, говорим ему об этом
     if not user:
+        await message.answer(
+            f"{message.from_user.first_name}, ты не участвуешь в челлендже, присоединяйся!"
+        )
         return
 
     # Определяем время просыпания пользователя
@@ -101,6 +109,14 @@ async def circle_heandler(message: Message, user_table: Worksheet):
     column_index = table.columns.tolist().index(datetime.now().strftime("%d.%m.%Y")) + 1
     # Если нет колонки с текущей датой, значит челендж не идет
     if column_index == 0:
+        return
+
+    # Если пользователь уже имеет результат в таблице, не меняем его
+    # Явное лучше не явного
+    if table.iloc[user_index, column_index - 1] != "":
+        await message.answer(
+            f"{message.from_user.first_name}, твой кружочек уже записан 👍"
+        )
         return
 
     # Если пользователь проснулся вовремя, ставим в таблице значение 0
